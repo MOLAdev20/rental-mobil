@@ -9,6 +9,7 @@ import {
   XCircle,
 } from "@lucide/vue";
 import { computed, onMounted, ref } from "vue";
+import CustomerDetailModal from "../../components/CustomerDetailModal.vue";
 import StatusBadge from "../../components/StatusBadge.vue";
 import {
   formatDateTime,
@@ -23,6 +24,15 @@ const loading = ref(true);
 const errorMessage = ref("");
 const actionId = ref("");
 const filter = ref("PENDING");
+
+const customerModalOpen = ref(false);
+const selectedCustomer = ref(null);
+
+function viewCustomerDetail(customer) {
+  if (!customer) return;
+  selectedCustomer.value = customer;
+  customerModalOpen.value = true;
+}
 
 const filters = [
   { value: "PENDING", label: "Perlu Verifikasi" },
@@ -42,8 +52,17 @@ const stats = computed(() => ({
   pending: bookings.value.filter((item) => item.status === "PENDING").length,
   approved: bookings.value.filter((item) => item.status === "APPROVED").length,
   active: bookings.value.filter((item) => item.status === "ACTIVE").length,
-  completed: bookings.value.filter((item) => item.status === "COMPLETED").length,
+  completed: bookings.value.filter((item) => item.status === "COMPLETED")
+    .length,
 }));
+
+function getCustomerDetail(customer) {
+  if (!customer) return {};
+  if (Array.isArray(customer.detail_user)) {
+    return customer.detail_user[0] || {};
+  }
+  return customer.detail_user || customer;
+}
 
 async function loadBookings() {
   loading.value = true;
@@ -52,7 +71,7 @@ async function loadBookings() {
   const { data, error } = await supabase
     .from("bookings")
     .select(
-      "*, vehicle:vehicles(*, vehicle_images(id, image_url, created_at)), customer:users(id, email, full_name, phone_number, avatar_url), return_info:returns(*)",
+      "*, vehicle:vehicles(*, vehicle_images(id, image_url, created_at)), customer:users(*, detail_user(*)), return_info:returns(*)",
     )
     .order("created_at", { ascending: false });
 
@@ -84,11 +103,16 @@ async function updateStatus(booking, status) {
 }
 
 async function openKtp(booking) {
-  if (!booking.ktp_image_url) return;
+  const ktpPath =
+    getCustomerDetail(booking.customer).ktp_image_url || booking.ktp_image_url;
+  if (!ktpPath) {
+    alert("Customer belum mengunggah dokumen KTP di profil.");
+    return;
+  }
 
   const { data, error } = await supabase.storage
     .from(KTP_BUCKET)
-    .createSignedUrl(booking.ktp_image_url, 120);
+    .createSignedUrl(ktpPath, 120);
 
   if (error) {
     errorMessage.value = error.message;
@@ -114,9 +138,7 @@ onMounted(loadBookings);
 <template>
   <div class="space-y-6">
     <div>
-      <h1 class="text-xl font-extrabold text-slate-800">
-        Verifikasi Booking
-      </h1>
+      <h1 class="text-xl font-extrabold text-slate-800">Verifikasi Booking</h1>
       <p class="text-sm text-slate-500">
         Periksa dokumen identitas customer lalu setujui atau tolak pengajuan.
       </p>
@@ -126,15 +148,21 @@ onMounted(loadBookings);
     <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
       <div class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
         <p class="text-xs text-slate-500">Perlu Verifikasi</p>
-        <p class="text-2xl font-extrabold text-amber-600">{{ stats.pending }}</p>
+        <p class="text-2xl font-extrabold text-amber-600">
+          {{ stats.pending }}
+        </p>
       </div>
       <div class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
         <p class="text-xs text-slate-500">Disetujui</p>
-        <p class="text-2xl font-extrabold text-blue-600">{{ stats.approved }}</p>
+        <p class="text-2xl font-extrabold text-blue-600">
+          {{ stats.approved }}
+        </p>
       </div>
       <div class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
         <p class="text-xs text-slate-500">Sedang Disewa</p>
-        <p class="text-2xl font-extrabold text-indigo-600">{{ stats.active }}</p>
+        <p class="text-2xl font-extrabold text-indigo-600">
+          {{ stats.active }}
+        </p>
       </div>
       <div class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
         <p class="text-xs text-slate-500">Selesai</p>
@@ -194,7 +222,9 @@ onMounted(loadBookings);
         :key="booking.id"
         class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"
       >
-        <div class="flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 p-5">
+        <div
+          class="flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 p-5"
+        >
           <div class="flex items-center gap-3.5">
             <div
               class="flex h-14 w-20 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-slate-100"
@@ -226,9 +256,12 @@ onMounted(loadBookings);
             <p class="text-xs font-bold uppercase tracking-wide text-slate-400">
               Customer
             </p>
-            <div class="flex items-center gap-3">
-              <div
-                class="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full bg-blue-100 text-sm font-bold text-blue-700"
+            <div class="flex items-start gap-3">
+              <button
+                type="button"
+                class="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-blue-100 text-sm font-bold text-blue-700 transition hover:ring-2 hover:ring-blue-400 hover:ring-offset-1"
+                title="Lihat detail lengkap customer"
+                @click="viewCustomerDetail(booking.customer)"
               >
                 <img
                   v-if="booking.customer?.avatar_url"
@@ -237,20 +270,34 @@ onMounted(loadBookings);
                   class="h-full w-full object-cover"
                 />
                 <span v-else>{{
-                  (booking.customer?.full_name ?? booking.customer?.email ?? "?")
+                  (
+                    booking.customer?.full_name ??
+                    booking.customer?.email ??
+                    "?"
+                  )
                     .charAt(0)
                     .toUpperCase()
                 }}</span>
-              </div>
-              <div class="text-sm">
-                <p class="font-semibold text-slate-700">
-                  {{ booking.customer?.full_name ?? "Tanpa nama" }}
-                </p>
+              </button>
+              <div class="text-sm min-w-0">
+                <button
+                  type="button"
+                  class="group inline-flex items-center gap-1.5 text-left font-semibold text-slate-800 transition-colors hover:text-blue-600"
+                  title="Klik untuk melihat detail informasi pribadi customer"
+                  @click="viewCustomerDetail(booking.customer)"
+                >
+                  <span class="group-hover:underline">{{
+                    booking.customer?.full_name ?? "Tanpa nama"
+                  }}</span>
+                  <span
+                    class="text-[10px] text-blue-600 font-semibold bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200 group-hover:bg-blue-600 group-hover:text-white transition-colors"
+                  >
+                    Lihat Profil
+                  </span>
+                </button>
                 <p class="text-xs text-slate-500">
-                  {{ booking.customer?.email }}
-                </p>
-                <p class="text-xs text-slate-500">
-                  {{ booking.customer?.phone_number || "No. HP belum diisi" }}
+                  {{ booking.customer?.email }} ·
+                  {{ booking.customer?.phone_number || "No. HP -" }}
                 </p>
               </div>
             </div>
@@ -342,5 +389,12 @@ onMounted(loadBookings);
         </div>
       </article>
     </div>
+
+    <!-- Modal Detail Customer -->
+    <CustomerDetailModal
+      :open="customerModalOpen"
+      :customer="selectedCustomer"
+      @close="customerModalOpen = false"
+    />
   </div>
 </template>

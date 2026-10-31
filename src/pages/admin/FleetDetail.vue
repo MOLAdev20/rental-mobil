@@ -15,6 +15,7 @@ import {
 import { computed, onMounted, reactive, ref } from "vue";
 import { useRouter } from "vue-router";
 import AppModal from "../../components/AppModal.vue";
+import CustomerDetailModal from "../../components/CustomerDetailModal.vue";
 import StatusBadge from "../../components/StatusBadge.vue";
 import {
   formatDateTime,
@@ -43,6 +44,15 @@ const loading = ref(true);
 const errorMessage = ref("");
 const deleting = ref(false);
 const activePhotoIndex = ref(0);
+
+const customerModalOpen = ref(false);
+const selectedCustomer = ref(null);
+
+function viewCustomerDetail(customer) {
+  if (!customer) return;
+  selectedCustomer.value = customer;
+  customerModalOpen.value = true;
+}
 
 // Filter riwayat transaksi sewa
 const timeFilter = ref("ALL"); // 'ALL' | 'MONTH' | 'WEEK' | 'DAILY' | 'CUSTOM'
@@ -173,7 +183,7 @@ async function loadData() {
       supabase
         .from("bookings")
         .select(
-          "*, customer:users(id, email, full_name, phone_number, avatar_url), return_info:returns(*)",
+          "*, customer:users(*, detail_user(*)), return_info:returns(*)",
         )
         .eq("vehicle_id", props.vehicleId)
         .order("created_at", { ascending: false }),
@@ -455,11 +465,16 @@ async function handleDelete() {
 
 // Buka KTP Customer
 async function openKtp(booking) {
-  if (!booking.ktp_image_url) return;
+  const ktpPath =
+    getCustomerDetail(booking.customer).ktp_image_url || booking.ktp_image_url;
+  if (!ktpPath) {
+    window.alert("Customer belum mengunggah dokumen KTP di profil.");
+    return;
+  }
 
   const { data, error } = await supabase.storage
     .from(KTP_BUCKET)
-    .createSignedUrl(booking.ktp_image_url, 120);
+    .createSignedUrl(ktpPath, 120);
 
   if (error) {
     window.alert("Gagal memuat dokumen KTP: " + error.message);
@@ -959,8 +974,11 @@ onMounted(loadData);
                 class="flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 pb-3"
               >
                 <div class="flex items-center gap-3">
-                  <div
-                    class="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-blue-100 text-sm font-bold text-blue-700"
+                  <button
+                    type="button"
+                    class="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-blue-100 text-sm font-bold text-blue-700 transition hover:ring-2 hover:ring-blue-400 hover:ring-offset-1 cursor-pointer"
+                    title="Lihat detail lengkap customer"
+                    @click="viewCustomerDetail(booking.customer)"
                   >
                     <img
                       v-if="booking.customer?.avatar_url"
@@ -979,11 +997,19 @@ onMounted(loadData);
                           .toUpperCase()
                       }}
                     </span>
-                  </div>
+                  </button>
                   <div>
-                    <h3 class="text-sm font-bold text-slate-800">
-                      {{ booking.customer?.full_name ?? "Tanpa Nama" }}
-                    </h3>
+                    <button
+                      type="button"
+                      class="group inline-flex items-center gap-1.5 text-left font-bold text-slate-800 transition-colors hover:text-blue-600 cursor-pointer"
+                      title="Klik untuk melihat detail informasi pribadi customer"
+                      @click="viewCustomerDetail(booking.customer)"
+                    >
+                      <span class="text-sm group-hover:underline">{{ booking.customer?.full_name ?? "Tanpa Nama" }}</span>
+                      <span class="text-[10px] text-blue-600 font-semibold bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200 group-hover:bg-blue-600 group-hover:text-white transition-colors">
+                        Detail
+                      </span>
+                    </button>
                     <p class="text-xs text-slate-500">
                       {{ booking.customer?.email }} ·
                       {{ booking.customer?.phone_number || "Tanpa No. HP" }}
@@ -1330,5 +1356,12 @@ onMounted(loadData);
         </div>
       </form>
     </AppModal>
+
+    <!-- Modal Detail Informasi Pribadi Customer -->
+    <CustomerDetailModal
+      :open="customerModalOpen"
+      :customer="selectedCustomer"
+      @close="customerModalOpen = false"
+    />
   </div>
 </template>

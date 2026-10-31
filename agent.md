@@ -13,9 +13,9 @@ The system is a modern, responsive, mobile-first Web Application for a vehicle (
 1. **Authentication**: Users log in via Google OAuth or Email/Password handled by Supabase Auth.
 2. **Catalog Browsing**: Customers explore available vehicles, filter by category (Cars/Motorcycles), and search by name.
 3. **Vehicle Detail & Photo Gallery**: Clicking a vehicle card opens its detail page (`/vehicles/:id`), where the customer browses the unit's photo gallery (exterior, interior, cabin, overall condition). The number of photos per vehicle is dynamic and managed by admins.
-4. **Booking Process**:
-   - Customer selects a vehicle and picks rental dates/times.
-   - Uploads ID Card (KTP/SIM) for identity verification.
+4. **Booking Process & Profile Prerequisite**:
+   - Customer must complete their profile details (NIK, SIM number, KTP document photo, address, city, emergency contact) once before initiating a booking. If incomplete, customer is automatically redirected to `/profile`.
+   - Customer selects a vehicle and picks rental dates/times without needing to re-upload ID/KTP for each transaction.
    - Submits booking request (Initial status: `PENDING`).
 5. **Order Tracking**: Customer tracks booking statuses (`APPROVED`, `ACTIVE`, `COMPLETED`, `CANCELLED`) and views active rental timers on their dashboard.
 
@@ -64,7 +64,7 @@ CREATE TYPE vehicle_type AS ENUM ('CAR', 'MOTORCYCLE');
 CREATE TYPE vehicle_status AS ENUM ('AVAILABLE', 'BOOKED', 'MAINTENANCE');
 CREATE TYPE booking_status AS ENUM ('PENDING', 'APPROVED', 'ACTIVE', 'COMPLETED', 'CANCELLED');
 
--- 2. USERS TABLE (Extends auth.users)
+-- 2. USERS TABLE (Extends auth.users for basic profile & role)
 CREATE TABLE public.users (
   id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   email TEXT UNIQUE NOT NULL,
@@ -75,7 +75,25 @@ CREATE TABLE public.users (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 3. VEHICLES TABLE
+-- 3. DETAIL_USER TABLE (1-to-1 extension of public.users for rental verification details)
+CREATE TABLE public.detail_user (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL UNIQUE REFERENCES public.users(id) ON DELETE CASCADE,
+  nik TEXT,
+  sim_number TEXT,
+  ktp_image_url TEXT, -- Uploaded once in customer profile, used across all bookings
+  address TEXT,
+  city TEXT,
+  emergency_contact_name TEXT,
+  emergency_contact_phone TEXT,
+  emergency_contact_relation TEXT,
+  job_title TEXT,
+  social_media TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 4. VEHICLES TABLE
 CREATE TABLE public.vehicles (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name TEXT NOT NULL,
@@ -89,7 +107,7 @@ CREATE TABLE public.vehicles (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 4. BOOKINGS TABLE
+-- 5. BOOKINGS TABLE
 CREATE TABLE public.bookings (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
@@ -97,13 +115,12 @@ CREATE TABLE public.bookings (
   start_date TIMESTAMPTZ NOT NULL,
   end_date TIMESTAMPTZ NOT NULL,
   total_price NUMERIC(10, 2) NOT NULL,
-  ktp_image_url TEXT NOT NULL,
   status booking_status DEFAULT 'PENDING',
   notes TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 5. VEHICLE IMAGES TABLE (photo gallery, dynamic count per vehicle)
+-- 6. VEHICLE IMAGES TABLE (photo gallery, dynamic count per vehicle)
 --    Files live in the `vehicle-images` bucket; storage_path is kept so the
 --    admin UI can remove the object when a photo row is deleted.
 CREATE TABLE public.vehicle_images (
@@ -114,7 +131,7 @@ CREATE TABLE public.vehicle_images (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 6. RETURNS TABLE
+-- 7. RETURNS TABLE
 CREATE TABLE public.returns (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   booking_id UUID NOT NULL REFERENCES public.bookings(id) ON DELETE CASCADE,
@@ -126,7 +143,7 @@ CREATE TABLE public.returns (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 7. AUTOMATIC USER CREATION TRIGGER FROM SUPABASE AUTH
+-- 8. AUTOMATIC USER CREATION TRIGGER FROM SUPABASE AUTH
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
 BEGIN

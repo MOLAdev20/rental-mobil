@@ -11,7 +11,8 @@ import {
 import { computed, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import StatusBadge from "../components/StatusBadge.vue";
-import { parseVehicleTags, rupiah, VEHICLE_TYPE } from "../lib/format";
+import { useAuth } from "../composables/useAuth";
+import { isProfileComplete, parseVehicleTags, rupiah, VEHICLE_TYPE } from "../lib/format";
 import { supabase } from "../lib/supabase-client";
 
 const props = defineProps({
@@ -19,6 +20,7 @@ const props = defineProps({
 });
 
 const router = useRouter();
+const { profile } = useAuth();
 
 const vehicle = ref(null);
 const images = ref([]);
@@ -89,6 +91,16 @@ async function loadDetail() {
 }
 
 function handleBook() {
+  if (!isProfileComplete(profile.value)) {
+    router.push({
+      name: "profile",
+      query: {
+        redirect: `/booking/${props.vehicleId}`,
+        required: "1",
+      },
+    });
+    return;
+  }
   router.push({ name: "booking", params: { vehicleId: props.vehicleId } });
 }
 

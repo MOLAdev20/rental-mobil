@@ -33,6 +33,7 @@ import {
 } from "chart.js";
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import AppModal from "../../components/AppModal.vue";
+import CustomerDetailModal from "../../components/CustomerDetailModal.vue";
 import StatusBadge from "../../components/StatusBadge.vue";
 import {
   BOOKING_STATUS,
@@ -75,6 +76,15 @@ const searchQuery = ref("");
 const detailModalOpen = ref(false);
 const selectedBooking = ref(null);
 
+const customerModalOpen = ref(false);
+const selectedCustomer = ref(null);
+
+function viewCustomerDetail(customer) {
+  if (!customer) return;
+  selectedCustomer.value = customer;
+  customerModalOpen.value = true;
+}
+
 // Chart Reference & Instance
 const chartCanvas = ref(null);
 let chartInstance = null;
@@ -98,6 +108,14 @@ const statusOptions = [
   { value: "CANCELLED", label: "Dibatalkan" },
 ];
 
+function getCustomerDetail(customer) {
+  if (!customer) return {};
+  if (Array.isArray(customer.detail_user)) {
+    return customer.detail_user[0] || {};
+  }
+  return customer.detail_user || customer;
+}
+
 // Load seluruh data booking beserta relasinya
 async function loadReportsData() {
   loading.value = true;
@@ -107,7 +125,7 @@ async function loadReportsData() {
     const { data, error } = await supabase
       .from("bookings")
       .select(
-        "*, vehicle:vehicles(*, vehicle_images(id, image_url, created_at)), customer:users(id, email, full_name, phone_number, avatar_url), return_info:returns(*)",
+        "*, vehicle:vehicles(*, vehicle_images(id, image_url, created_at)), customer:users(*, detail_user(*)), return_info:returns(*)",
       )
       .order("created_at", { ascending: false });
 
@@ -227,18 +245,20 @@ const dailyChartData = computed(() => {
 
     // Hitung nominal transaksi (jika sewa selesai dan ada denda, pakai final_price)
     const amount = Number(b.return_info?.final_price ?? b.total_price ?? 0);
-    // Transaksi yang dibatalkan tidak dimasukkan ke kalkulasi pendapatan
-    const revenueToAdd = b.status === "CANCELLED" ? 0 : amount;
+    // Transaksi yang dibatalkan tidak dicatat (dianggap 0 transaksi dan 0 pendapatan)
+    const isCancelled = b.status === "CANCELLED";
+    const revenueToAdd = isCancelled ? 0 : amount;
+    const countToAdd = isCancelled ? 0 : 1;
 
     if (!dayMap.has(key)) {
       dayMap.set(key, {
-        count: 1,
+        count: countToAdd,
         revenue: revenueToAdd,
         dateObj: new Date(rawDate),
       });
     } else {
       const cur = dayMap.get(key);
-      cur.count += 1;
+      cur.count += countToAdd;
       cur.revenue += revenueToAdd;
     }
   }
@@ -454,6 +474,8 @@ function exportToCSV() {
     "Tipe",
     "Nomor Polisi",
     "Nama Penyewa",
+    "NIK",
+    "Nomor SIM",
     "Email Penyewa",
     "No. Telepon",
     "Tanggal Booking",
@@ -469,6 +491,7 @@ function exportToCSV() {
     const days = rentalDays(b.start_date, b.end_date);
     const finalAmount = b.return_info?.final_price ?? b.total_price;
     const statusLabel = BOOKING_STATUS[b.status]?.label ?? b.status;
+    const detail = getCustomerDetail(b.customer);
 
     return [
       `"${b.id}"`,
@@ -476,6 +499,8 @@ function exportToCSV() {
       `"${b.vehicle?.type || ""}"`,
       `"${b.vehicle?.license_plate || ""}"`,
       `"${(b.customer?.full_name || "Tanpa Nama").replace(/"/g, '""')}"`,
+      `"${detail.nik || ""}"`,
+      `"${detail.sim_number || ""}"`,
       `"${b.customer?.email || ""}"`,
       `"${b.customer?.phone_number || ""}"`,
       `"${formatDateTime(b.created_at)}"`,
@@ -677,7 +702,7 @@ onBeforeUnmount(() => {
             Grafik Garis Transaksi &amp; Pendapatan Harian
           </h2>
           <p class="text-xs text-slate-400">
-            Setiap titik menampilkan akumulasi jumlah transaksi sewa dan total nominal pendapatan pada hari tersebut.
+            Setiap titik menampilkan akumulasi jumlah transaksi sewa dan total nominal pendapatan pada hari tersebut (transaksi yang dibatalkan tidak dicatat / dianggap 0).
           </p>
         </div>
 
@@ -808,9 +833,14 @@ onBeforeUnmount(() => {
 
               <!-- Pelanggan / Customer -->
               <td class="py-3.5 px-3">
-                <p class="font-bold text-slate-800 line-clamp-1">
+                <button
+                  type="button"
+                  class="font-bold text-slate-800 line-clamp-1 hover:text-blue-600 hover:underline text-left cursor-pointer transition-colors"
+                  title="Klik untuk melihat detail informasi pribadi customer"
+                  @click="viewCustomerDetail(booking.customer)"
+                >
                   {{ booking.customer?.full_name ?? "Tanpa Nama" }}
-                </p>
+                </button>
                 <p class="text-[11px] text-slate-400">
                   {{ booking.customer?.phone_number || booking.customer?.email }}
                 </p>
@@ -910,9 +940,24 @@ onBeforeUnmount(() => {
 
         <!-- Rincian Penyewa & Sewa -->
         <div class="rounded-xl border border-slate-200 p-3 space-y-2 text-xs">
-          <div class="flex justify-between">
+          <div class="flex justify-between items-center">
             <span class="text-slate-400">Penyewa</span>
-            <span class="font-bold text-slate-800">{{ selectedBooking.customer?.full_name ?? "Tanpa Nama" }}</span>
+            <button
+              type="button"
+              class="font-bold text-slate-800 hover:text-blue-600 hover:underline cursor-pointer"
+              title="Klik untuk melihat profil lengkap customer"
+              @click="viewCustomerDetail(selectedBooking.customer)"
+            >
+              {{ selectedBooking.customer?.full_name ?? "Tanpa Nama" }}
+            </button>
+          </div>
+          <div v-if="getCustomerDetail(selectedBooking.customer).nik" class="flex justify-between">
+            <span class="text-slate-400">NIK KTP</span>
+            <span class="font-mono font-bold text-slate-800">{{ getCustomerDetail(selectedBooking.customer).nik }}</span>
+          </div>
+          <div v-if="getCustomerDetail(selectedBooking.customer).sim_number" class="flex justify-between">
+            <span class="text-slate-400">Nomor SIM</span>
+            <span class="font-mono font-bold text-slate-800">{{ getCustomerDetail(selectedBooking.customer).sim_number }}</span>
           </div>
           <div class="flex justify-between">
             <span class="text-slate-400">No. WhatsApp / HP</span>
@@ -921,6 +966,18 @@ onBeforeUnmount(() => {
           <div class="flex justify-between">
             <span class="text-slate-400">Email</span>
             <span class="font-bold text-slate-800">{{ selectedBooking.customer?.email }}</span>
+          </div>
+          <div v-if="getCustomerDetail(selectedBooking.customer).address" class="flex justify-between">
+            <span class="text-slate-400">Alamat Domisili</span>
+            <span class="font-semibold text-slate-800 text-right max-w-[60%]">
+              {{ getCustomerDetail(selectedBooking.customer).address }} ({{ getCustomerDetail(selectedBooking.customer).city || "-" }})
+            </span>
+          </div>
+          <div v-if="getCustomerDetail(selectedBooking.customer).emergency_contact_phone" class="flex justify-between text-rose-600">
+            <span>Kontak Darurat</span>
+            <span class="font-semibold text-right">
+              {{ getCustomerDetail(selectedBooking.customer).emergency_contact_name }} ({{ getCustomerDetail(selectedBooking.customer).emergency_contact_phone }})
+            </span>
           </div>
           <div class="border-t border-slate-100 pt-2 flex justify-between">
             <span class="text-slate-400">Waktu Transaksi</span>
@@ -981,5 +1038,12 @@ onBeforeUnmount(() => {
         </div>
       </div>
     </AppModal>
+
+    <!-- Modal Detail Informasi Pribadi Customer -->
+    <CustomerDetailModal
+      :open="customerModalOpen"
+      :customer="selectedCustomer"
+      @close="customerModalOpen = false"
+    />
   </div>
 </template>

@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from "vue-router";
 import { useAuth } from "./composables/useAuth";
 import AppLayout from "./layouts/AppLayout.vue";
+import { isProfileComplete } from "./lib/format";
 
 const routes = [
   {
@@ -43,6 +44,12 @@ const routes = [
         path: "orders",
         name: "orders",
         component: () => import("./pages/Orders.vue"),
+      },
+      {
+        path: "profile",
+        name: "profile",
+        component: () => import("./pages/Profile.vue"),
+        meta: { customerOnly: true },
       },
       {
         path: "admin",
@@ -118,9 +125,19 @@ router.beforeEach(async (to) => {
     if (!isAdmin.value) return { name: "catalog" };
   }
 
-  // Role ADMIN tidak diizinkan mengakses halaman katalog customer
-  if (isAdmin.value && (to.name === "catalog" || to.meta.customerOnly)) {
+  // Role ADMIN tidak diizinkan mengakses halaman customer (katalog, pengisian profil sewa, dll)
+  if (isAdmin.value && (to.name === "catalog" || to.name === "profile" || to.meta.customerOnly)) {
     return { name: "admin-bookings" };
+  }
+
+  // Sebelum melakukan sewa (booking), customer wajib melengkapi informasi profil
+  if (to.name === "booking" && !isAdmin.value) {
+    if (!isProfileComplete(profile.value)) {
+      return {
+        name: "profile",
+        query: { redirect: to.fullPath, required: "1" },
+      };
+    }
   }
 
   return true;

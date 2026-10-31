@@ -1,5 +1,5 @@
 <script setup>
-import { BarChart3, Car, ClipboardList, Package } from "@lucide/vue";
+import { BarChart3, Car, ClipboardList, Package, User } from "@lucide/vue";
 import { computed } from "vue";
 import { useRoute } from "vue-router";
 import { useAuth } from "../composables/useAuth";
@@ -18,6 +18,7 @@ const links = computed(() =>
     : [
         { name: "catalog", label: "Beranda", icon: Car },
         { name: "orders", label: "Pesanan", icon: ClipboardList },
+        { name: "profile", label: "Profil", icon: User },
       ],
 );
 </script>

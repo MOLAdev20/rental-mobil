@@ -207,3 +207,76 @@ export function toLocalInput(isoValue) {
   const offset = date.getTimezoneOffset();
   return new Date(date.getTime() - offset * 60000).toISOString().slice(0, 16);
 }
+
+/** Field wajib profil penyewa untuk verifikasi rental kendaraan */
+export const REQUIRED_PROFILE_FIELDS = {
+  full_name: "Nama Lengkap (KTP)",
+  phone_number: "Nomor WhatsApp / HP",
+  nik: "NIK KTP (16 Digit)",
+  sim_number: "Nomor SIM (SIM A / SIM C)",
+  ktp_image_url: "Foto Dokumen KTP Asli",
+  address: "Alamat Lengkap Domisili",
+  city: "Kota / Kabupaten",
+  emergency_contact_name: "Nama Kontak Darurat",
+  emergency_contact_phone: "Nomor HP Kontak Darurat",
+};
+
+/** Memeriksa apakah data profil pelanggan sudah lengkap untuk menyewa unit */
+export function isProfileComplete(profile) {
+  if (!profile) return false;
+  const detail = profile.detail_user || profile;
+
+  // Cek field tabel users
+  const hasName = Boolean(profile.full_name && String(profile.full_name).trim());
+  const hasPhone = Boolean(profile.phone_number && String(profile.phone_number).trim());
+
+  // Cek field tabel detail_user
+  const detailKeys = [
+    "nik",
+    "sim_number",
+    "ktp_image_url",
+    "address",
+    "city",
+    "emergency_contact_name",
+    "emergency_contact_phone",
+  ];
+  const hasDetail = detailKeys.every((key) => {
+    const val = detail[key] || profile[key];
+    return typeof val === "string" && val.trim().length > 0;
+  });
+
+  return hasName && hasPhone && hasDetail;
+}
+
+/** Mengambil daftar nama field profil yang belum diisi oleh pelanggan */
+export function getMissingProfileFields(profile) {
+  if (!profile) return Object.values(REQUIRED_PROFILE_FIELDS);
+  const detail = profile.detail_user || profile;
+
+  const missing = [];
+  if (!profile.full_name || !String(profile.full_name).trim()) {
+    missing.push(REQUIRED_PROFILE_FIELDS.full_name);
+  }
+  if (!profile.phone_number || !String(profile.phone_number).trim()) {
+    missing.push(REQUIRED_PROFILE_FIELDS.phone_number);
+  }
+
+  const detailKeys = [
+    "nik",
+    "sim_number",
+    "ktp_image_url",
+    "address",
+    "city",
+    "emergency_contact_name",
+    "emergency_contact_phone",
+  ];
+  for (const k of detailKeys) {
+    const val = detail[k] || profile[k];
+    if (!val || typeof val !== "string" || !val.trim()) {
+      missing.push(REQUIRED_PROFILE_FIELDS[k]);
+    }
+  }
+
+  return missing;
+}
+

@@ -7,6 +7,7 @@ import {
 } from "@lucide/vue";
 import { computed, onMounted, onUnmounted, reactive, ref } from "vue";
 import AppModal from "../../components/AppModal.vue";
+import CustomerDetailModal from "../../components/CustomerDetailModal.vue";
 import {
   formatDateTime,
   formatDuration,
@@ -22,6 +23,15 @@ const returns = ref([]);
 const loading = ref(true);
 const errorMessage = ref("");
 const saving = ref(false);
+
+const customerModalOpen = ref(false);
+const selectedCustomer = ref(null);
+
+function viewCustomerDetail(customer) {
+  if (!customer) return;
+  selectedCustomer.value = customer;
+  customerModalOpen.value = true;
+}
 
 const modalOpen = ref(false);
 const selectedBooking = ref(null);
@@ -66,14 +76,14 @@ async function loadData() {
     supabase
       .from("bookings")
       .select(
-        "*, vehicle:vehicles(*, vehicle_images(id, image_url, created_at)), customer:users(full_name, email, phone_number)",
+        "*, vehicle:vehicles(*, vehicle_images(id, image_url, created_at)), customer:users(*, detail_user(*))",
       )
       .eq("status", "ACTIVE")
       .order("end_date", { ascending: true }),
     supabase
       .from("returns")
       .select(
-        "*, booking:bookings(id, start_date, end_date, total_price, vehicle:vehicles(*, vehicle_images(id, image_url, created_at)), customer:users(full_name, email))",
+        "*, booking:bookings(id, start_date, end_date, total_price, vehicle:vehicles(*, vehicle_images(id, image_url, created_at)), customer:users(*, detail_user(*)))",
       )
       .order("created_at", { ascending: false })
       .limit(20),
@@ -215,7 +225,14 @@ onUnmounted(() => clearInterval(clock));
                   </h3>
                   <p class="text-xs text-slate-500">
                     {{ booking.vehicle?.license_plate }} ·
-                    {{ booking.customer?.full_name ?? booking.customer?.email }}
+                    <button
+                      type="button"
+                      class="font-semibold text-slate-700 hover:text-blue-600 hover:underline cursor-pointer"
+                      title="Klik untuk melihat informasi pribadi customer"
+                      @click="viewCustomerDetail(booking.customer)"
+                    >
+                      {{ booking.customer?.full_name ?? booking.customer?.email }}
+                    </button>
                   </p>
                 </div>
               </div>
@@ -315,7 +332,14 @@ onUnmounted(() => clearInterval(clock));
                   </div>
                 </td>
                 <td class="px-5 py-3 text-slate-600">
-                  {{ item.booking?.customer?.full_name ?? item.booking?.customer?.email ?? "-" }}
+                  <button
+                    type="button"
+                    class="font-medium text-slate-700 hover:text-blue-600 hover:underline cursor-pointer"
+                    title="Klik untuk melihat informasi pribadi customer"
+                    @click="viewCustomerDetail(item.booking?.customer)"
+                  >
+                    {{ item.booking?.customer?.full_name ?? item.booking?.customer?.email ?? "-" }}
+                  </button>
                 </td>
                 <td class="px-5 py-3 text-slate-600">
                   {{ formatDateTime(item.return_date) }}
@@ -357,7 +381,15 @@ onUnmounted(() => clearInterval(clock));
                 {{ selectedBooking.vehicle?.name }}
               </p>
               <p class="text-xs text-slate-500">
-                {{ selectedBooking.vehicle?.license_plate }} · {{ selectedBooking.customer?.full_name ?? selectedBooking.customer?.email }}
+                {{ selectedBooking.vehicle?.license_plate }} ·
+                <button
+                  type="button"
+                  class="font-semibold text-slate-700 hover:text-blue-600 hover:underline cursor-pointer"
+                  title="Klik untuk melihat informasi pribadi customer"
+                  @click="viewCustomerDetail(selectedBooking.customer)"
+                >
+                  {{ selectedBooking.customer?.full_name ?? selectedBooking.customer?.email }}
+                </button>
               </p>
             </div>
           </div>
@@ -484,5 +516,12 @@ onUnmounted(() => clearInterval(clock));
         </div>
       </form>
     </AppModal>
+
+    <!-- Modal Detail Informasi Pribadi Customer -->
+    <CustomerDetailModal
+      :open="customerModalOpen"
+      :customer="selectedCustomer"
+      @close="customerModalOpen = false"
+    />
   </div>
 </template>

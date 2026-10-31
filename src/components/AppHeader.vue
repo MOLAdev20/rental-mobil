@@ -1,5 +1,5 @@
 <script setup>
-import { BarChart3, Car, ClipboardList, LogOut, Package } from "@lucide/vue";
+import { BarChart3, Car, ClipboardList, LogOut, Package, User } from "@lucide/vue";
 import { computed } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useAuth } from "../composables/useAuth";
@@ -30,6 +30,7 @@ const navLinks = computed(() => {
   return [
     { name: "catalog", label: "Katalog Armada", icon: Car },
     { name: "orders", label: "Pesanan Saya", icon: ClipboardList },
+    { name: "profile", label: "Profil Saya", icon: User },
   ];
 });
 
@@ -74,31 +75,67 @@ async function handleLogout() {
 
       <!-- Info user + logout -->
       <div class="flex items-center gap-3">
-        <div class="hidden text-right sm:block">
-          <p class="text-xs text-slate-500">
-            {{ isAdmin ? "Login sebagai Admin" : "Selamat datang," }}
-          </p>
-          <p class="text-sm font-bold leading-tight text-slate-800">
-            {{ displayName }}
-          </p>
-        </div>
-
-        <div
-          class="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full border-2 border-blue-600 bg-blue-100 text-sm font-bold text-blue-700"
+        <!-- Khusus Customer: Link menuju halaman Profil Pribadi -->
+        <RouterLink
+          v-if="!isAdmin"
+          :to="{ name: 'profile' }"
+          title="Buka Profil Saya"
+          class="flex items-center gap-3 rounded-xl p-1 transition-colors hover:bg-slate-50 cursor-pointer"
         >
-          <img
-            v-if="profile?.avatar_url"
-            :src="profile.avatar_url"
-            :alt="displayName"
-            class="h-full w-full object-cover"
-          />
-          <span v-else>{{ initials }}</span>
+          <div class="hidden text-right sm:block">
+            <p class="text-xs text-slate-500">
+              Selamat datang,
+            </p>
+            <p class="text-sm font-bold leading-tight text-slate-800">
+              {{ displayName }}
+            </p>
+          </div>
+
+          <div
+            class="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full border-2 border-blue-600 bg-blue-100 text-sm font-bold text-blue-700"
+          >
+            <img
+              v-if="profile?.avatar_url"
+              :src="profile.avatar_url"
+              :alt="displayName"
+              class="h-full w-full object-cover"
+            />
+            <span v-else>{{ initials }}</span>
+          </div>
+        </RouterLink>
+
+        <!-- Khusus Admin: Identitas Administrator (Non-clickable, tidak ada fitur isi data pribadi) -->
+        <div
+          v-else
+          class="flex items-center gap-3 rounded-xl p-1"
+        >
+          <div class="hidden text-right sm:block">
+            <span class="inline-block rounded-md bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800 uppercase tracking-wide">
+              Administrator
+            </span>
+            <p class="text-sm font-bold leading-tight text-slate-800">
+              {{ displayName }}
+            </p>
+          </div>
+
+          <div
+            class="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full border-2 border-amber-500 bg-amber-100 text-sm font-bold text-amber-800"
+            title="Administrator"
+          >
+            <img
+              v-if="profile?.avatar_url"
+              :src="profile.avatar_url"
+              :alt="displayName"
+              class="h-full w-full object-cover"
+            />
+            <span v-else>{{ initials }}</span>
+          </div>
         </div>
 
         <button
           type="button"
           title="Keluar"
-          class="rounded-xl border border-slate-200 p-2 text-slate-500 transition-colors hover:border-red-200 hover:bg-red-50 hover:text-red-600"
+          class="rounded-xl border border-slate-200 p-2 text-slate-500 transition-colors hover:border-red-200 hover:bg-red-50 hover:text-red-600 cursor-pointer"
           @click="handleLogout"
         >
           <LogOut class="h-5 w-5" />
